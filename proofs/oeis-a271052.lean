@@ -1,0 +1,409 @@
+import OMAStatements.S_oeis_a271052
+import Mathlib
+
+namespace CAOEISA271052Aux
+
+
+def pat (b : Bool) (L : List (ℤ × ℤ)) : ℤ → ℤ → Bool := fun i j => if (i, j) ∈ L then !b else b
+
+def inBox (L : List (ℤ × ℤ)) : Prop := ∀ p ∈ L, -2 ≤ p.1 ∧ p.1 ≤ 2 ∧ -2 ≤ p.2 ∧ p.2 ≤ 2
+
+lemma pat_far (b : Bool) (L : List (ℤ × ℤ)) (hL : inBox L) (u v : ℤ)
+    (h : ¬(-2 ≤ u ∧ u ≤ 2 ∧ -2 ≤ v ∧ v ≤ 2)) : pat b L u v = b := by
+  unfold pat
+  have hm : (u, v) ∉ L := fun hm => h (hL _ hm)
+  simp [hm]
+
+def seven : List ℤ := [-3, -2, -1, 0, 1, 2, 3]
+
+lemma mem_seven (x : ℤ) (h1 : -3 ≤ x) (h2 : x ≤ 3) : x ∈ seven := by
+  unfold seven
+  simp
+  omega
+
+def nxt (code : ℕ) (g : ℤ → ℤ → Bool) : ℤ → ℤ → Bool := fun i j =>
+  code.testBit ((g i j).toNat + 2 * ((g (i + 1) j).toNat + (g (i - 1) j).toNat +
+    (g i (j + 1)).toNat + (g i (j - 1)).toNat))
+
+open OMA.S_oeis_a271052 in
+lemma cell_succ (code t : ℕ) : cell code (t + 1) = nxt code (cell code t) := by
+  funext i j
+  rw [cell]
+  rfl
+
+open OMA.S_oeis_a271052 in
+lemma cell_zero (code : ℕ) : cell code 0 = pat false [(0, 0)] := by
+  funext i j
+  unfold pat
+  rw [cell]
+  by_cases h : i = 0 ∧ j = 0
+  · simp [h]
+  · have h' : ¬ ((i, j) = ((0 : ℤ), (0 : ℤ))) := fun e => h (Prod.mk.injEq _ _ _ _ |>.mp e)
+    simp [h, h']
+
+lemma step_pat (code : ℕ) (b b' : Bool) (L L' : List (ℤ × ℤ)) (hL : inBox L) (hL' : inBox L')
+    (hr : code.testBit (b.toNat + 2 * (b.toNat + b.toNat + b.toNat + b.toNat)) = b')
+    (hbox : ∀ x ∈ seven, ∀ y ∈ seven, nxt code (pat b L) x y = pat b' L' x y) :
+    nxt code (pat b L) = pat b' L' := by
+  funext x y
+  by_cases h : (-3 ≤ x ∧ x ≤ 3) ∧ (-3 ≤ y ∧ y ≤ 3)
+  · exact hbox x (mem_seven x h.1.1 h.1.2) y (mem_seven y h.2.1 h.2.2)
+  · rw [pat_far b' L' hL' x y (by omega)]
+    unfold nxt
+    rw [pat_far b L hL x y (by omega), pat_far b L hL (x + 1) y (by omega),
+      pat_far b L hL (x - 1) y (by omega), pat_far b L hL x (y + 1) (by omega),
+      pat_far b L hL x (y - 1) (by omega)]
+    exact hr
+
+lemma count_single (t : ℕ) (p : ℤ × ℤ)
+    (h : -(t : ℤ) ≤ p.1 ∧ p.1 ≤ t ∧ -(t : ℤ) ≤ p.2 ∧ p.2 ≤ t) :
+    ∑ i ∈ Finset.range (2 * t + 1), ∑ j ∈ Finset.range (2 * t + 1),
+      (if (((i : ℤ) - t, (j : ℤ) - t) = p) then 1 else 0) = 1 := by
+  obtain ⟨p1, p2⟩ := p
+  simp only at h
+  have e1 : (((p1 + t).toNat : ℕ) : ℤ) = p1 + t := Int.toNat_of_nonneg (by omega)
+  have e2 : (((p2 + t).toNat : ℕ) : ℤ) = p2 + t := Int.toNat_of_nonneg (by omega)
+  rw [Finset.sum_eq_single (p1 + t).toNat]
+  · rw [Finset.sum_eq_single (p2 + t).toNat]
+    · rw [if_pos]
+      rw [e1, e2]
+      simp
+    · intro j _ hj
+      rw [if_neg]
+      intro heq
+      apply hj
+      have h2 := (Prod.mk.injEq _ _ _ _ |>.mp heq).2
+      omega
+    · intro hn
+      exfalso
+      apply hn
+      rw [Finset.mem_range]
+      omega
+  · intro i _ hi
+    apply Finset.sum_eq_zero
+    intro j _
+    rw [if_neg]
+    intro heq
+    apply hi
+    have h1 := (Prod.mk.injEq _ _ _ _ |>.mp heq).1
+    omega
+  · intro hn
+    exfalso
+    apply hn
+    rw [Finset.mem_range]
+    omega
+
+lemma count_mem (t : ℕ) (L : List (ℤ × ℤ)) (hn : L.Nodup)
+    (hb : ∀ p ∈ L, -(t : ℤ) ≤ p.1 ∧ p.1 ≤ t ∧ -(t : ℤ) ≤ p.2 ∧ p.2 ≤ t) :
+    ∑ i ∈ Finset.range (2 * t + 1), ∑ j ∈ Finset.range (2 * t + 1),
+      (if (((i : ℤ) - t, (j : ℤ) - t) ∈ L) then 1 else 0) = L.length := by
+  induction L with
+  | nil => simp
+  | cons p L ih =>
+    have hp : p ∉ L := (List.nodup_cons.mp hn).1
+    have hn' : L.Nodup := (List.nodup_cons.mp hn).2
+    have e : ∀ i j : ℕ, (if (((i : ℤ) - t, (j : ℤ) - t) ∈ p :: L) then 1 else 0) =
+        (if (((i : ℤ) - t, (j : ℤ) - t) = p) then 1 else 0) +
+        (if (((i : ℤ) - t, (j : ℤ) - t) ∈ L) then 1 else 0) := by
+      intro i j
+      by_cases h1 : ((i : ℤ) - t, (j : ℤ) - t) = p
+      · have h2 : ((i : ℤ) - t, (j : ℤ) - t) ∉ L := by rw [h1]; exact hp
+        rw [if_pos (by rw [h1]; exact List.mem_cons_self), if_pos h1, if_neg h2]
+      · by_cases h3 : ((i : ℤ) - t, (j : ℤ) - t) ∈ L
+        · rw [if_pos (List.mem_cons_of_mem _ h3), if_neg h1, if_pos h3]
+        · rw [if_neg (by
+            intro hm
+            rcases List.mem_cons.mp hm with h4 | h4
+            · exact h1 h4
+            · exact h3 h4), if_neg h1, if_neg h3]
+    simp only [e, Finset.sum_add_distrib]
+    rw [count_single t p (hb p List.mem_cons_self),
+      ih hn' (fun q hq => hb q (List.mem_cons_of_mem _ hq))]
+    simp [add_comm]
+
+open OMA.S_oeis_a271052 in
+lemma onCount_false (code t : ℕ) (L : List (ℤ × ℤ)) (c : ℕ) (hc : L.length = c) (hn : L.Nodup)
+    (hb : ∀ p ∈ L, -(t : ℤ) ≤ p.1 ∧ p.1 ≤ t ∧ -(t : ℤ) ≤ p.2 ∧ p.2 ≤ t)
+    (h : cell code t = pat false L) : onCount code t = c := by
+  unfold onCount
+  rw [h, ← hc, ← count_mem t L hn hb]
+  apply Finset.sum_congr rfl
+  intro i _
+  apply Finset.sum_congr rfl
+  intro j _
+  unfold pat
+  by_cases hm : ((i : ℤ) - t, (j : ℤ) - t) ∈ L <;> simp [hm]
+
+open OMA.S_oeis_a271052 in
+lemma onCount_true (code t : ℕ) (L : List (ℤ × ℤ)) (c : ℕ) (hc : L.length = c) (hn : L.Nodup)
+    (hb : ∀ p ∈ L, -(t : ℤ) ≤ p.1 ∧ p.1 ≤ t ∧ -(t : ℤ) ≤ p.2 ∧ p.2 ≤ t)
+    (h : cell code t = pat true L) : onCount code t + c = (2 * t + 1) ^ 2 := by
+  unfold onCount
+  rw [h, ← hc, ← count_mem t L hn hb, ← Finset.sum_add_distrib]
+  have e : ∀ i ∈ Finset.range (2 * t + 1),
+      (∑ j ∈ Finset.range (2 * t + 1), (if pat true L ((i : ℤ) - t) ((j : ℤ) - t) = true then 1 else 0)
+        + ∑ j ∈ Finset.range (2 * t + 1), (if (((i : ℤ) - t, (j : ℤ) - t) ∈ L) then 1 else 0))
+      = 2 * t + 1 := by
+    intro i _
+    rw [← Finset.sum_add_distrib]
+    have e2 : ∀ j ∈ Finset.range (2 * t + 1),
+        ((if pat true L ((i : ℤ) - t) ((j : ℤ) - t) = true then 1 else 0)
+          + (if (((i : ℤ) - t, (j : ℤ) - t) ∈ L) then 1 else 0) : ℕ) = 1 := by
+      intro j _
+      unfold pat
+      by_cases hm : ((i : ℤ) - t, (j : ℤ) - t) ∈ L <;> simp [hm]
+    rw [Finset.sum_congr rfl e2]
+    simp
+  rw [Finset.sum_congr rfl e]
+  simp
+  ring
+
+
+open PowerSeries in
+lemma coeff_term (f : ℕ → ℚ) (c : ℚ) (k n : ℕ) :
+    coeff n (mk f * (C c * X ^ k)) = if k ≤ n then c * f (n - k) else 0 := by
+  rw [← mul_assoc, mul_comm (mk f) (C c), mul_assoc, coeff_C_mul, coeff_mul_X_pow']
+  split_ifs <;> simp [coeff_mk]
+
+open OMA.S_oeis_a271052 in
+lemma st0 : cell 253 0 = pat false [(0, 0)] := cell_zero 253
+
+open OMA.S_oeis_a271052 in
+lemma st1 : cell 253 1 = pat true [(0, 0)] := by
+  rw [show (1 : ℕ) = 0 + 1 from rfl, cell_succ, st0]
+  exact step_pat 253 false true [(0, 0)] [(0, 0)] (by unfold inBox; decide) (by unfold inBox; decide) (by decide) (by decide)
+
+open OMA.S_oeis_a271052 in
+lemma st2 : cell 253 2 = pat false [(-1, 0), (0, -1), (0, 1), (1, 0)] := by
+  rw [show (2 : ℕ) = 1 + 1 from rfl, cell_succ, st1]
+  exact step_pat 253 true false [(0, 0)] [(-1, 0), (0, -1), (0, 1), (1, 0)] (by unfold inBox; decide) (by unfold inBox; decide) (by decide) (by decide)
+
+open OMA.S_oeis_a271052 in
+lemma st3 : cell 253 3 = pat true [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] := by
+  rw [show (3 : ℕ) = 2 + 1 from rfl, cell_succ, st2]
+  exact step_pat 253 false true [(-1, 0), (0, -1), (0, 1), (1, 0)] [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] (by unfold inBox; decide) (by unfold inBox; decide) (by decide) (by decide)
+
+open OMA.S_oeis_a271052 in
+lemma st4 : cell 253 4 = pat false [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] := by
+  rw [show (4 : ℕ) = 3 + 1 from rfl, cell_succ, st3]
+  exact step_pat 253 true false [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] (by unfold inBox; decide) (by unfold inBox; decide) (by decide) (by decide)
+
+open OMA.S_oeis_a271052 in
+lemma st5 : cell 253 5 = pat true [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] := by
+  rw [show (5 : ℕ) = 4 + 1 from rfl, cell_succ, st4]
+  exact step_pat 253 false true [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] (by unfold inBox; decide) (by unfold inBox; decide) (by decide) (by decide)
+
+lemma stepAB : nxt 253 (pat false [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)]) = pat true [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] :=
+  step_pat 253 false true [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] (by unfold inBox; decide) (by unfold inBox; decide) (by decide) (by decide)
+
+lemma stepBA : nxt 253 (pat true [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)]) = pat false [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] :=
+  step_pat 253 true false [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] (by unfold inBox; decide) (by unfold inBox; decide) (by decide) (by decide)
+
+open OMA.S_oeis_a271052 in
+lemma stP (m : ℕ) : cell 253 (4 + 2 * m) = pat false [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] ∧
+    cell 253 (4 + 2 * m + 1) = pat true [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] := by
+  induction m with
+  | zero => exact ⟨st4, st5⟩
+  | succ k ih =>
+    have h1 : cell 253 (4 + 2 * (k + 1)) = pat false [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] := by
+      rw [show 4 + 2 * (k + 1) = (4 + 2 * k + 1) + 1 from by ring, cell_succ, ih.2]
+      exact stepBA
+    refine ⟨h1, ?_⟩
+    rw [cell_succ, h1]
+    exact stepAB
+
+open OMA.S_oeis_a271052 in
+lemma oc0 : onCount 253 0 = 1 :=
+  onCount_false 253 0 _ 1 rfl (by decide) (by decide) st0
+
+open OMA.S_oeis_a271052 in
+lemma oc1 : onCount 253 1 = 8 := by
+  have h := onCount_true 253 1 _ 1 rfl (by decide) (by decide) st1
+  omega
+
+open OMA.S_oeis_a271052 in
+lemma oc2 : onCount 253 2 = 4 :=
+  onCount_false 253 2 _ 4 rfl (by decide) (by decide) st2
+
+open OMA.S_oeis_a271052 in
+lemma oc3 : onCount 253 3 = 44 := by
+  have h := onCount_true 253 3 _ 5 rfl (by decide) (by decide) st3
+  omega
+
+open OMA.S_oeis_a271052 in
+lemma oc4 : onCount 253 4 = 13 :=
+  onCount_false 253 4 _ 13 rfl (by decide) (by decide) st4
+
+open OMA.S_oeis_a271052 in
+lemma oc5 : onCount 253 5 = 116 := by
+  have h := onCount_true 253 5 _ 5 rfl (by decide) (by decide) st5
+  omega
+
+lemma hLE : inBox [(-2, 0), (-1, -1), (-1, 0), (-1, 1), (0, -2), (0, -1), (0, 0), (0, 1), (0, 2), (1, -1), (1, 0), (1, 1), (2, 0)] := by unfold inBox; decide
+
+open OMA.S_oeis_a271052 in
+lemma ocE (m : ℕ) : (onCount 253 (4 + 2 * m) : ℤ) = 13 := by
+  have h := onCount_false 253 (4 + 2 * m) _ 13 rfl (by decide) (fun p hp => by have h := hLE p hp; omega) (stP m).1
+  rw [h]
+  norm_num
+
+lemma hLO : inBox [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)] := by unfold inBox; decide
+
+open OMA.S_oeis_a271052 in
+lemma ocO (m : ℕ) : (onCount 253 (4 + 2 * m + 1) : ℤ) = (2 * (4 + 2 * (m : ℤ) + 1) + 1) ^ 2 - 5 := by
+  have h := onCount_true 253 (4 + 2 * m + 1) _ 5 rfl (by decide) (fun p hp => by have h := hLO p hp; omega) (stP m).2
+  have h' : ((onCount 253 (4 + 2 * m + 1) : ℕ) : ℤ) + 5 = (2 * (4 + 2 * (m : ℤ) + 1) + 1) ^ 2 := by exact_mod_cast h
+  linarith
+
+open OMA.S_oeis_a271052 in
+lemma oc_eq (n : ℕ) (hn : 4 ≤ n) : (onCount 253 n : ℚ) = (((9 : ℚ) / 2) + (2 : ℚ) * (n : ℚ) + (2 : ℚ) * (n : ℚ) ^ 2) + (-1 : ℚ) ^ n * (((17 : ℚ) / 2) + (-2 : ℚ) * (n : ℚ) + (-2 : ℚ) * (n : ℚ) ^ 2) := by
+  obtain ⟨m, rfl | rfl⟩ : ∃ m, n = 4 + 2 * m ∨ n = 4 + 2 * m + 1 := ⟨(n - 4) / 2, by omega⟩
+  · have hs : (-1 : ℚ) ^ (4 + 2 * m) = 1 := Even.neg_one_pow ⟨2 + m, by ring⟩
+    have h := ocE m
+    have h' : ((onCount 253 (4 + 2 * m) : ℕ) : ℚ) = (((onCount 253 (4 + 2 * m) : ℕ) : ℤ) : ℚ) := by norm_cast
+    rw [h', h, hs]
+    push_cast
+    ring
+  · have hs : (-1 : ℚ) ^ (4 + 2 * m + 1) = -1 := Odd.neg_one_pow ⟨2 + m, by ring⟩
+    have h := ocO m
+    have h' : ((onCount 253 (4 + 2 * m + 1) : ℕ) : ℚ) = (((onCount 253 (4 + 2 * m + 1) : ℕ) : ℤ) : ℚ) := by norm_cast
+    rw [h', h, hs]
+    push_cast
+    ring
+
+open OMA.S_oeis_a271052 in
+lemma a_eq (n : ℕ) (hn : 4 ≤ n) : (a n : ℚ) = ((-(31 : ℚ) / 4) + ((35 : ℚ) / 6) * (n : ℚ) + (2 : ℚ) * (n : ℚ) ^ 2 + ((2 : ℚ) / 3) * (n : ℚ) ^ 3) + (-1 : ℚ) ^ n * (((15 : ℚ) / 4) + (-2 : ℚ) * (n : ℚ) + (-1 : ℚ) * (n : ℚ) ^ 2) := by
+  induction n, hn using Nat.le_induction with
+  | base =>
+    norm_num [a, Finset.sum_range_succ, oc0, oc1, oc2, oc3, oc4, oc5]
+  | succ k hk ih =>
+    have e : (a (k + 1) : ℚ) = (a k : ℚ) + (onCount 253 (k + 1) : ℚ) := by
+      unfold a
+      rw [Finset.sum_range_succ]
+      push_cast
+      ring
+    rw [e, ih, oc_eq (k + 1) (by omega), pow_succ]
+    push_cast
+    ring
+
+open OMA.S_oeis_a271052 in
+lemma av0 : (a 0 : ℚ) = 1 := by
+  norm_num [a, Finset.sum_range_succ, oc0, oc1, oc2, oc3, oc4, oc5]
+
+open OMA.S_oeis_a271052 in
+lemma av1 : (a 1 : ℚ) = 9 := by
+  norm_num [a, Finset.sum_range_succ, oc0, oc1, oc2, oc3, oc4, oc5]
+
+open OMA.S_oeis_a271052 in
+lemma av2 : (a 2 : ℚ) = 13 := by
+  norm_num [a, Finset.sum_range_succ, oc0, oc1, oc2, oc3, oc4, oc5]
+
+open OMA.S_oeis_a271052 in
+lemma av3 : (a 3 : ℚ) = 57 := by
+  norm_num [a, Finset.sum_range_succ, oc0, oc1, oc2, oc3, oc4, oc5]
+
+open OMA.S_oeis_a271052 in
+lemma av4 : (a 4 : ℚ) = 70 := by
+  rw [a_eq 4 (by norm_num)]
+  norm_num
+
+open OMA.S_oeis_a271052 in
+lemma av5 : (a 5 : ℚ) = 186 := by
+  rw [a_eq 5 (by norm_num)]
+  norm_num
+
+open OMA.S_oeis_a271052 in
+lemma av6 : (a 6 : ℚ) = 199 := by
+  rw [a_eq 6 (by norm_num)]
+  norm_num
+
+open OMA.S_oeis_a271052 in
+lemma av7 : (a 7 : ℚ) = 419 := by
+  rw [a_eq 7 (by norm_num)]
+  norm_num
+
+open OMA.S_oeis_a271052 in
+lemma av8 : (a 8 : ℚ) = 432 := by
+  rw [a_eq 8 (by norm_num)]
+  norm_num
+
+open OMA.S_oeis_a271052 in
+lemma av9 : (a 9 : ℚ) = 788 := by
+  rw [a_eq 9 (by norm_num)]
+  norm_num
+
+open OMA.S_oeis_a271052 in
+lemma av10 : (a 10 : ℚ) = 801 := by
+  rw [a_eq 10 (by norm_num)]
+  norm_num
+
+open OMA.S_oeis_a271052 in
+lemma av11 : (a 11 : ℚ) = 1325 := by
+  rw [a_eq 11 (by norm_num)]
+  norm_num
+
+end CAOEISA271052Aux
+
+set_option maxHeartbeats 1600000 in
+open OMA.S_oeis_a271052 CAOEISA271052Aux in
+theorem OMA.solution : type_of% @OMA.S_oeis_a271052.main := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · have hD : (((1 - PowerSeries.X) ^ 4 * (1 + PowerSeries.X) ^ 3) : PowerSeries ℚ) =
+        PowerSeries.C 1 * PowerSeries.X ^ 0 + PowerSeries.C (-1) * PowerSeries.X ^ 1 + PowerSeries.C (-3) * PowerSeries.X ^ 2 + PowerSeries.C 3 * PowerSeries.X ^ 3 + PowerSeries.C 3 * PowerSeries.X ^ 4 + PowerSeries.C (-3) * PowerSeries.X ^ 5 + PowerSeries.C (-1) * PowerSeries.X ^ 6 + PowerSeries.C 1 * PowerSeries.X ^ 7 := by
+      simp only [map_one, map_ofNat, map_neg]
+      ring
+    have hN : ((1 + 8 * PowerSeries.X + PowerSeries.X ^ 2 + 20 * PowerSeries.X ^ 3 + 4 * PowerSeries.X ^ 4 + 8 * PowerSeries.X ^ 5 - 15 * PowerSeries.X ^ 6 - 4 * PowerSeries.X ^ 7 + 9 * PowerSeries.X ^ 8) : PowerSeries ℚ) =
+        PowerSeries.C 1 * PowerSeries.X ^ 0 + PowerSeries.C 8 * PowerSeries.X ^ 1 + PowerSeries.C 1 * PowerSeries.X ^ 2 + PowerSeries.C 20 * PowerSeries.X ^ 3 + PowerSeries.C 4 * PowerSeries.X ^ 4 + PowerSeries.C 8 * PowerSeries.X ^ 5 + PowerSeries.C (-15) * PowerSeries.X ^ 6 + PowerSeries.C (-4) * PowerSeries.X ^ 7 + PowerSeries.C 9 * PowerSeries.X ^ 8 := by
+      simp only [map_one, map_ofNat, map_neg]
+      ring
+    rw [hD, hN]
+    ext n
+    simp only [mul_add, map_add, coeff_term, PowerSeries.coeff_C_mul_X_pow]
+    rcases Nat.lt_or_ge n 11 with h | h
+    · interval_cases n
+      · norm_num [av0]
+      · norm_num [av0, av1]
+      · norm_num [av0, av1, av2]
+      · norm_num [av0, av1, av2, av3]
+      · norm_num [av0, av1, av2, av3, av4]
+      · norm_num [av0, av1, av2, av3, av4, av5]
+      · norm_num [av0, av1, av2, av3, av4, av5, av6]
+      · norm_num [av0, av1, av2, av3, av4, av5, av6, av7]
+      · norm_num [av1, av2, av3, av4, av5, av6, av7, av8]
+      · norm_num [av2, av3, av4, av5, av6, av7, av8, av9]
+      · norm_num [av3, av4, av5, av6, av7, av8, av9, av10]
+    · obtain ⟨m, rfl⟩ : ∃ m, n = m + 11 := ⟨n - 11, by omega⟩
+      rw [if_pos (show 0 ≤ m + 11 from by omega), if_pos (show 1 ≤ m + 11 from by omega), if_pos (show 2 ≤ m + 11 from by omega), if_pos (show 3 ≤ m + 11 from by omega), if_pos (show 4 ≤ m + 11 from by omega), if_pos (show 5 ≤ m + 11 from by omega), if_pos (show 6 ≤ m + 11 from by omega), if_pos (show 7 ≤ m + 11 from by omega)]
+      rw [if_neg (show ¬ (m + 11 = 0) from by omega), if_neg (show ¬ (m + 11 = 1) from by omega), if_neg (show ¬ (m + 11 = 2) from by omega), if_neg (show ¬ (m + 11 = 3) from by omega), if_neg (show ¬ (m + 11 = 4) from by omega), if_neg (show ¬ (m + 11 = 5) from by omega), if_neg (show ¬ (m + 11 = 6) from by omega), if_neg (show ¬ (m + 11 = 7) from by omega), if_neg (show ¬ (m + 11 = 8) from by omega)]
+      rw [show m + 11 - 0 = m + 11 from by omega, show m + 11 - 1 = m + 10 from by omega, show m + 11 - 2 = m + 9 from by omega, show m + 11 - 3 = m + 8 from by omega, show m + 11 - 4 = m + 7 from by omega, show m + 11 - 5 = m + 6 from by omega, show m + 11 - 6 = m + 5 from by omega, show m + 11 - 7 = m + 4 from by omega]
+      rw [a_eq (m + 11) (by omega), a_eq (m + 10) (by omega), a_eq (m + 9) (by omega), a_eq (m + 8) (by omega), a_eq (m + 7) (by omega), a_eq (m + 6) (by omega), a_eq (m + 5) (by omega), a_eq (m + 4) (by omega)]
+      push_cast
+      ring
+  · intro n hn hp
+    have hs : (-1 : ℚ) ^ n = 1 := hp.neg_one_pow
+    rcases Nat.lt_or_ge n 4 with h | h
+    · interval_cases n
+      · rw [av2]
+        norm_num
+      · exact absurd hp (by decide)
+    · rw [a_eq n h, hs]
+      ring
+  · intro n hn hp
+    have hs : (-1 : ℚ) ^ n = -1 := hp.neg_one_pow
+    rcases Nat.lt_or_ge n 4 with h | h
+    · interval_cases n
+      · exact absurd hp (by decide)
+      · rw [av3]
+        norm_num
+    · rw [a_eq n h, hs]
+      ring
+  · intro n hn
+    rcases Nat.lt_or_ge n 11 with h | h
+    · interval_cases n
+      · norm_num [av2, av3, av4, av5, av6, av7, av8, av9]
+      · norm_num [av3, av4, av5, av6, av7, av8, av9, av10]
+    · obtain ⟨m, rfl⟩ : ∃ m, n = m + 11 := ⟨n - 11, by omega⟩
+      rw [show m + 11 - 1 = m + 10 from by omega, show m + 11 - 2 = m + 9 from by omega, show m + 11 - 3 = m + 8 from by omega, show m + 11 - 4 = m + 7 from by omega, show m + 11 - 5 = m + 6 from by omega, show m + 11 - 6 = m + 5 from by omega, show m + 11 - 7 = m + 4 from by omega]
+      rw [a_eq (m + 11) (by omega), a_eq (m + 10) (by omega), a_eq (m + 9) (by omega), a_eq (m + 8) (by omega), a_eq (m + 7) (by omega), a_eq (m + 6) (by omega), a_eq (m + 5) (by omega), a_eq (m + 4) (by omega)]
+      push_cast
+      ring
